@@ -1,0 +1,17 @@
+# secrets
+.env
+
+# saved runs (demo backup, local only)
+runs/
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# os
+.DS_Store
+
+# large local screenshot, not for the repo
+image.png

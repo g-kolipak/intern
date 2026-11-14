@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unshred: real paper</title>
+<style>
+  body { margin: 0; background: #141416; color: #eee;
+         font: 15px/1.4 -apple-system, Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+           border-bottom: 1px solid #2a2a2e; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 13px; margin: 14px 0 6px; color: #9a9aa3;
+       text-transform: uppercase; letter-spacing: .06em; }
+  h2:first-child { margin-top: 0; }
+  .tag { background: #2d2d33; border-radius: 999px; padding: 3px 11px;
+         font-size: 12px; color: #c9c9d1; }
+  #step { font-size: 16px; flex: 1; }
+  button { background: #37d67a; color: #08210f; border: 0; border-radius: 8px;
+           padding: 8px 18px; font-size: 15px; font-weight: 600;
+           cursor: pointer; }
+  button.quiet { background: #2d2d33; color: #ddd; }
+  main { display: grid; grid-template-columns: 270px 1fr 310px; gap: 12px;
+         padding: 12px; height: calc(100vh - 62px); box-sizing: border-box; }
+  section { background: #1b1b1f; border: 1px solid #2a2a2e;
+            border-radius: 10px; padding: 12px; overflow: auto; }
+  #stage { position: relative; overflow: hidden; padding: 0; }
+  #photo { width: 100%; border-radius: 6px; display: block; }
+  .note { color: #9a9aa3; font-size: 13px; margin: 8px 0 0; }
+  .piece { position: absolute; cursor: grab; user-select: none;
+           -webkit-user-drag: none; touch-action: none;
+           transition: left 1.1s, top 1.1s, width 1.1s, transform 1.1s,
+                       filter .4s;
+           filter: drop-shadow(0 5px 9px rgba(0, 0, 0, .7)); }
+  .piece.high { filter: drop-shadow(0 0 5px #37d67a)
+                        drop-shadow(0 0 5px #37d67a); }
+  .piece.low { filter: drop-shadow(0 0 5px #f5a623)
+                       drop-shadow(0 0 5px #f5a623); }
+  .piece.loose { filter: drop-shadow(0 0 4px #e5484d); }
+  .piece.drag { transition: none; cursor: grabbing; z-index: 9; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 0; border-bottom: 1px solid #26262b; }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums;
+                  font-weight: 600; }
+  ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+  .g { color: #37d67a; } .a { color: #f5a623; } .r { color: #e5484d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Unshred</h1>
+  <span class="tag">Real paper, real photo</span>
+  <span id="step">Loading…</span>
+  <button id="go">Start</button>
+  <button id="again" class="quiet">Reset</button>
+</header>
+<main>
+  <section>
+    <h2>The photo</h2>
+    <img id="photo" alt="photo of the torn pieces with their borders">
+    <p class="note">Borders are found by image processing. Drex never sees
+      the table, only the cut-out pieces.</p>
+    <h2>Who decides what</h2>
+    <p class="note">Piece agent (Drex Max): which way is up for this
+      piece?<br>Parent agent (Drex Max): does piece B continue piece A, on
+      the right or below?<br>Code only keeps a join when both pieces pick
+      each other and the score is at least <b id="thr"></b>.</p>
+  </section>
+  <section id="stage"></section>
+  <section>
+    <h2>Scoreboard</h2>
+    <table id="score"></table>
+    <h2>Decisions</h2>
+    <ol id="log"></ol>
+  </section>
+</main>
+<script>
+const run = new URLSearchParams(location.search).get('run') || 'image';
+const base = '../runs/photo/' + run + '/';
+const $ = id => document.getElementById(id);
+const els = {}, timers = [];
+let D;
+
+const loader = document.createElement('script');
+loader.src = base + 'demo.js';
+loader.onload = () => { D = window.DEMO; reset();
+  if (new URLSearchParams(location.search).get('auto')) start(); };
+loader.onerror = () => { $('step').textContent =
+  'No saved run "' + run + '". Run scripts/tear.py PHOTO --match first.'; };
+document.head.append(loader);
+
+function fit(w, h) {            // scale and offsets to centre w x h on stage
+  const box = $('stage').getBoundingClientRect();
+  const k = Math.min(box.width / w, box.height / h) * 0.96;
+  return { k, ox: (box.width - w * k) / 2, oy: (box.height - h * k) / 2 };
+}
+function asPhoto(p) {           // where and how the piece lay on the table
+  const f = fit(...D.photo_size), el = els[p.id];
+  el.style.width = p.w * f.k + 'px';
+  el.style.left = f.ox + (p.cx * D.photo_size[0] - p.w / 2) * f.k + 'px';
+  el.style.top = f.oy + (p.cy * D.photo_size[1] - p.h / 2) * f.k + 'px';
+  el.style.transform = 'rotate(' + p.start + 'deg)';
+  el.className = 'piece';
+}
+function toPage(p, cls) {       // its place on the rebuilt page
+  const f = fit(...D.canvas), el = els[p.id];
+  el.style.width = p.w * f.k + 'px';
+  el.style.left = f.ox + p.x * f.k + 'px';
+  el.style.top = f.oy + p.y * f.k + 'px';
+  el.className = 'piece ' + cls;
+}
+function row(label, value) {
+  return '<tr><td>' + label + '</td><td>' + value + '</td></tr>';
+}
+function score(turned, joins, done) {
+  const u = D.usage || {}, placed = D.pieces.filter(p => p.placed).length;
+  const dash = v => (v === undefined || v === null) ? 'n/a' : v;
+  $('score').innerHTML =
+    row('Pieces found', D.pieces.length) +
+    row('Turned upright by Drex', turned + ' / ' + D.pieces.length) +
+    row('Joins accepted', joins + ' / ' + D.links.length) +
+    row('Placed by Drex', done ? placed + ' / ' + D.pieces.length : '…') +
+    row('Needs a human', done ? D.loose.length : '…') +
+    row('Drex Max calls', dash(u.calls)) +
+    row('Average latency', u.avg_latency_ms ? Math.round(u.avg_latency_ms) + ' ms' : 'n/a') +
+    row('Input tokens', u.input_tokens ? u.input_tokens.toLocaleString() : 'n/a') +
+    row('Drex time', u.wall_s ? u.wall_s + ' s' : (u.latency_ms ? (u.latency_ms / 1000).toFixed(1) + ' s (sum of calls)' : 'n/a')) +
+    (u.cost_usd ? row('Cost', '$' + u.cost_usd.toFixed(4)) : '');
+}
+function say(html) {
+  const li = document.createElement('li');
+  li.innerHTML = html;
+  $('log').append(li);
+  li.scrollIntoView({ block: 'nearest' });
+}
+function later(ms, fn) { timers.push(setTimeout(fn, ms)); }
+
+function reset() {
+  timers.splice(0).forEach(clearTimeout);
+  $('photo').src = base + D.photo;
+  $('thr').textContent = D.threshold;
+  $('stage').innerHTML = '';
+  $('log').innerHTML = '';
+  D.pieces.forEach(p => {
+    const el = els[p.id] = document.createElement('img');
+    el.src = base + p.src; el.draggable = false; el.title = p.id;
+    $('stage').append(el);
+    el.style.transition = 'none'; asPhoto(p); el.offsetWidth;
+    el.style.transition = ''; drag(el);
+  });
+  score(0, 0, false);
+  $('step').textContent = 'Step 1: ' + D.pieces.length +
+    ' pieces cut out of the photo. Press Start.';
+}
+function start() {
+  reset();
+  const byId = Object.fromEntries(D.pieces.map(p => [p.id, p]));
+  let t = 300;
+  $('step').textContent = 'Step 2: piece agents ask Drex which way is up';
+  D.pieces.forEach((p, i) => later(t += 420, () => {
+    els[p.id].style.transform = 'rotate(0deg)';
+    say('<b>' + p.id + '</b> turned ' + p.turn + '° <span class="' +
+        (p.confidence >= 0.8 ? 'g' : 'a') + '">' + p.confidence.toFixed(2) + '</span>');
+    score(i + 1, 0, false);
+  }));
+  later(t += 1500, () => { $('step').textContent =
+    'Step 3: the parent agent asks Drex which pieces continue each other'; });
+  D.links.forEach((l, i) => later(t += 1500, () => {
+    const cls = l.score >= 0.8 ? 'high' : 'low';
+    toPage(byId[l.a], cls); toPage(byId[l.b], cls);
+    say('<b>' + l.b + '</b> is ' + l.direction + ' of <b>' + l.a +
+        '</b> <span class="' + (cls === 'high' ? 'g' : 'a') + '">' +
+        l.score.toFixed(2) + '</span>');
+    score(D.pieces.length, i + 1, false);
+  }));
+  later(t += 1800, () => {
+    D.loose.forEach(id => toPage(byId[id], 'loose'));
+    score(D.pieces.length, D.links.length, true);
+    if (D.loose.length) say('<span class="r">' + D.loose.length +
+      ' pieces had no join above ' + D.threshold + '</span>: drag them by hand');
+    $('step').textContent = 'Done: Drex placed ' +
+      D.pieces.filter(p => p.placed).length + ' of ' + D.pieces.length +
+      ' pieces. Red pieces need a human: drag them into place.';
+  });
+}
+function drag(el) {
+  el.onpointerdown = e => {
+    const dx = e.clientX - el.offsetLeft, dy = e.clientY - el.offsetTop;
+    el.classList.add('drag'); el.setPointerCapture(e.pointerId);
+    el.onpointermove = m => { el.style.left = m.clientX - dx + 'px';
+                              el.style.top = m.clientY - dy + 'px'; };
+    el.onpointerup = () => { el.classList.remove('drag');
+                             el.onpointermove = null; };
+  };
+}
+$('go').onclick = start;
+$('again').onclick = reset;
+</script>
+</body>
+</html>

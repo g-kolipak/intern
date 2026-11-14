@@ -1,0 +1,37 @@
+ACME BUILDING SUPPLIES CORP
+1200 Industrial Park Road
+Phoenix, AZ 85034
+
+INVOICE
+Number:  2026-0417
+Date:    November 14, 2026
+Due:     December 14, 2026
+
+Bill To:
+    Desert Valley Renovations LLC
+    88 Cactus Flower Lane
+    Scottsdale, AZ 85251
+    Attn: Maria Chen, Project Manager
+
+Ship To:
+    Site 7, Northgate Remodel
+    4501 N 44th Street
+    Phoenix, AZ 85018
+
+Line items:
+  1. Pressure-treated lumber, 2x4x8   120 pieces   $6.40 each
+  2. Drywall sheets, 4x8 half-inch     48 sheets   $14.25 each
+  3. Interior paint, eggshell white    12 gallons  $38.90 each
+  4. Drywall screws, #25 bag           20 bags     $11.75 each
+  5. Ceiling grid and tiles, per sqft  640 sqft    $2.10 per sqft
+
+Subtotal:       $4,121.80
+Sales tax:      $337.89
+Freight:        $185.00
+TOTAL DUE:     $4,644.69
+
+Payment is due net 30 days from the invoice date.
+Please reference invoice number 2026-0417 on your remittance.
+Checks may be made out to Acme Building Supplies Corp.
+Questions: billing@acmebuildingsupplies.example, (602) 555-0147.
+Thank you for your business.
